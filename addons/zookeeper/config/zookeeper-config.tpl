@@ -25,9 +25,9 @@ syncLimit=30
 # the directory where the snapshot is stored.
 # do not use /tmp for storage, /tmp here is just
 # example sakes.
-dataDir=/bitnami/zookeeper/data
+dataDir=/zookeeper/data
 #
-dataLogDir=/bitnami/zookeeper/log
+dataLogDir=/zookeeper/log
 # the port at which the clients will connect
 clientPort={{- $client_port }}
 # the maximum number of client connections.
@@ -56,17 +56,11 @@ maxClientCnxns=500
 4lw.commands.whitelist=srvr, mntr, ruok
 
 # cluster server list
-{{- $clusterName := $.cluster.metadata.name }}
-{{- $namespace := $.cluster.metadata.namespace }}
-{{- $zk_component := fromJson "{}" }}
-{{- range $i, $e := $.cluster.spec.componentSpecs }}
-  {{- if eq $e.componentDefRef "zookeeper" }}
-    {{- $zk_component = $e }}
-  {{- end }}
-{{- end }}
+{{- $namespace := $.KB_NAMESPACE }}
+{{- $clusterName := $.KB_CLUSTER_NAME }}
 
 {{- printf "\n" }}
-{{- $replicas := $zk_component.replicas | int }}
+{{- $replicas := $.KB_COMP_REPLICAS | int }}
 {{- range $i, $e := until $replicas }}
-  {{- printf "server.%d=%s-%s-%d.%s-%s-headless.%s.svc.cluster.local:%d:%d:participant;0.0.0.0:%d\n" $i $clusterName $zk_component.name $i $clusterName $zk_component.name $namespace $quorum_port $election_port $client_port }}
+  {{- printf "server.%d=%s-%s-%d.%s-%s-headless.%s.svc.cluster.local:%d:%d:participant;0.0.0.0:%d\n" $i $clusterName $.KB_COMP_NAME $i $clusterName $.KB_COMP_NAME $namespace $quorum_port $election_port $client_port }}
 {{- end }}

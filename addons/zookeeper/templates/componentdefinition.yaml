@@ -1,0 +1,163 @@
+apiVersion: apps.kubeblocks.io/v1alpha1
+kind: ComponentDefinition
+metadata:
+  name: zookeeper-{{ .Chart.Version }}
+  labels:
+    {{- include "zookeeper.labels" . | nindent 4 }}
+spec:
+  description: {{ .Chart.Description }}
+  serviceKind: {{ .Chart.Name }}
+  serviceVersion: {{ .Chart.AppVersion }}
+  runtime:
+    securityContext:
+      fsGroup: 0
+      runAsGroup: 0
+      runAsUser: 10000
+    initContainers:
+      - name: init-chmod-data
+        image: docker.io/bitnami/os-shell:11-debian-11-r93
+        imagePullPolicy: IfNotPresent
+        command:
+          - /bin/bash
+          - -c
+          - |
+            chown -R 10000 /zookeeper/data
+            chown -R 10000 /zookeeper/log
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+          - mountPath: /zookeeper/data
+            name: data
+          - mountPath: /zookeeper/log
+            name: data-log
+    containers:
+      - name: zookeeper
+        image: docker.io/dtweave/zookeeper:v3.7-1.0.0
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: K8S_REPLICAS
+            value: "$(KB_REPLICA_COUNT)"
+          - name: STANDALONE_ENABLE
+            value: "false"
+          - name: RE_CONFIG_ENABLE
+            value: "true"
+          - name: ZOO_4LW_COMMANDS_WHITELIST
+            value: "srvr, mntr, ruok"
+          - name: ZOO_LOG_DIR
+            value: "/opt/zookeeper/logs"
+          - name: ZOO_LOG4J_PROP
+            value: "INFO,ROLLINGFILE"
+          - name: DEBUG_MODEL
+            value: "true"
+        ports:
+          - name: client
+            containerPort: {{ .Values.containerPorts.client }}
+          - name: tcp-quorum
+            containerPort: {{ .Values.containerPorts.quorum }}
+          - name: tcp-election
+            containerPort: {{ .Values.containerPorts.election }}
+          - name: http
+            containerPort: {{ .Values.containerPorts.http }}
+        livenessProbe:
+          failureThreshold: 6
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - echo ruok | nc -w 5 127.0.0.1 {{ .Values.containerPorts.client }} | grep imok
+        readinessProbe:
+          failureThreshold: 6
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - echo ruok | nc -w 5 127.0.0.1 {{ .Values.containerPorts.client }} | grep imok
+        resources:
+          requests:
+            cpu: 50m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          privileged: false
+          runAsGroup: 0
+          runAsNonRoot: true
+          runAsUser: 10000
+        volumeMounts:
+          - mountPath: /zookeeper/data
+            name: data
+          - mountPath: /zookeeper/log
+            name: data-log
+          - name: configs
+            mountPath: /opt/zookeeper/conf/zoo.cfg
+            subPath: zoo.cfg
+  configs:
+    - name: zookeeper-config
+      namespace: {{ .Release.Namespace }}
+      templateRef: {{ include "zookeeper.name" . }}-config-template
+      constraintRef: {{ include "zookeeper.name" . }}-config-constraints
+      volumeName: configs
+      defaultMode: 0755
+  logConfigs:
+    {{- range $name,$pattern := .Values.logConfigs }}
+    - name: {{ $name }}
+      filePathPattern: {{ $pattern }}
+    {{- end }}
+  services:
+    - name: client
+      spec:
+        type: ClusterIP
+        ports:
+          - name: client
+            port: 2181
+            targetPort: client
+      roleSelector: leader
+    - name: client-pod
+      serviceName: client
+      spec:
+        type: ClusterIP
+        ports:
+          - name: client
+            port: 2181
+            targetPort: client
+      generatePodOrdinalService: true
+  updateStrategy: BestEffortParallel
+  roles:
+    - name: leader
+      serviceable: true
+      writable: true
+      votable: true
+    - name: follower
+      serviceable: true
+      writable: false
+      votable: true
+    - name: standalone
+      serviceable: true
+      writable: true
+      votable: true
+  lifecycleActions:
+    roleProbe:
+      customHandler:
+        exec:
+          command: [
+            '/bin/sh',
+            '-c',
+            '"echo srvr | nc -w 5 127.0.0.1 {{ .Values.containerPorts.client }} | grep Mode | awk -F \": \" \"{print \\\$2}\""'
+          ]
+      failureThreshold: 6
+      initialDelaySeconds: 15
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 5
+
+
