@@ -1,7 +1,7 @@
 apiVersion: apps.kubeblocks.io/v1alpha1
 kind: ComponentDefinition
 metadata:
-  name: {{ include "mysql.componentDefName" . }}-5.7.44
+  name: {{ include "mysql.componentDefName" . }}
   labels:
       {{- include "mysql.labels" . | nindent 4 }}
 spec:
@@ -105,13 +105,7 @@ spec:
             if [ -f {{ .Values.dataMountPath }}/data/.restore_new_cluster ]; then
               skip_slave_start="ON"
             fi
-            /scripts/docker-entrypoint-5.7.sh mysqld --server-id $(( ${KB_POD_NAME##*-} + 1)) \
-            --ignore-db-dir=lost+found \
-            --plugin-load-add=rpl_semi_sync_master=semisync_master.so \
-            --plugin-load-add=rpl_semi_sync_slave=semisync_slave.so \
-            --plugin-load-add=audit_log=audit_log.so \
-            --log-bin={{.Values.dataMountPath}}/binlog/$(KB_POD_NAME)-bin \
-            --skip-slave-start=$skip_slave_start
+            /scripts/mysql-entrypoint.sh
         volumeMounts:
           - mountPath: {{ .Values.dataMountPath }}
             name: data
@@ -154,7 +148,7 @@ spec:
       valueFrom:
         credentialVarRef:
           ## reference the current component definition name
-          compDef: {{ include "mysql.componentDefName" . }}-5.7.44
+          compDef: {{ include "mysql.componentDefName" . }}
           name: root
           username: Required
 
@@ -163,6 +157,6 @@ spec:
       valueFrom:
         credentialVarRef:
           ## reference the current component definition name
-          compDef: {{ include "mysql.componentDefName" . }}-5.7.44
+          compDef: {{ include "mysql.componentDefName" . }}
           name: root
           password: Required
